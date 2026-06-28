@@ -71,11 +71,8 @@ spec:
             {{- if ne .timeouts.shutdown nil }}
             - {name: SHUTDOWN_TIMEOUT, value: "{{ .timeouts.shutdown }}"}
             {{- end }}
-            {{- if .storage.driver }}
-            - {name: STORAGE_DRIVER, value: "{{ .storage.driver }}"}
-            {{- end }}
-            {{- if .storage.dirPath }}
-            - {name: FS_STORAGE_DIR, value: "{{ .storage.dirPath }}"}
+            {{- if .files.dir }}
+            - {name: FILES_DIR, value: "{{ .files.dir }}"}
             {{- end }}
             {{- if .pubsub.driver }}
             - {name: PUBSUB_DRIVER, value: "{{ .pubsub.driver }}"}

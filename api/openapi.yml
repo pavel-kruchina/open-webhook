@@ -266,6 +266,20 @@ components:
       required: [limits, tunnel]
       additionalProperties: false
 
+    RequestFile:
+      type: object
+      description: >
+        A file extracted from a captured multipart/form-data request body. The file content is stored on the
+        server's filesystem (never in the request body) and can be downloaded via
+        /{session_uuid}/files/{file_uuid}.
+      properties:
+        uuid: {$ref: '#/components/schemas/UUID'}
+        name: {type: string, example: 'photo.jpg', description: 'Original file name from the upload'}
+        content_type: {type: string, example: 'image/jpeg', description: 'MIME type of the file'}
+        size: {type: integer, x-go-type: int64, minimum: 0, example: 20480, description: 'File size in bytes'}
+      required: [uuid, name, content_type, size]
+      additionalProperties: false
+
     CapturedRequest:
       type: object
       description: Recorded request
@@ -280,7 +294,11 @@ components:
           type: string
           example: 'https://example.com/path?query=string'
         captured_at_unix_milli: {$ref: '#/components/schemas/UnixMilliTime'}
-      required: [uuid, client_address, method, request_payload_base64, headers, url, captured_at_unix_milli]
+        files:
+          description: Files extracted from a multipart/form-data body (downloadable via /{session_uuid}/files/{file_uuid})
+          type: array
+          items: {$ref: '#/components/schemas/RequestFile'}
+      required: [uuid, client_address, method, request_payload_base64, headers, url, captured_at_unix_milli, files]
       additionalProperties: false
 
     RequestEvent:

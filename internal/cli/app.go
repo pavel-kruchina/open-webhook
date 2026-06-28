@@ -57,7 +57,7 @@ func NewApp() *cli.Command {
 	const defaultHttpPort uint16 = 8080
 
 	return &cli.Command{
-		Usage: "webhook tester",
+		Usage: "open-webhook",
 		Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
 			_ = log.Sync() // sync previous logger instance
 

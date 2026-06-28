@@ -40,6 +40,21 @@ func (h *Handler) Handle(ctx context.Context, sID sID) (*openapi.CapturedRequest
 			rHeaders[i].Name, rHeaders[i].Value = header.Name, header.Value
 		}
 
+		var rFiles = make([]openapi.RequestFile, 0, len(r.Files))
+		for _, f := range r.Files {
+			fUUID, fErr := uuid.Parse(f.UUID)
+			if fErr != nil {
+				continue
+			}
+
+			rFiles = append(rFiles, openapi.RequestFile{
+				Uuid:        fUUID,
+				Name:        f.Name,
+				ContentType: f.ContentType,
+				Size:        f.Size,
+			})
+		}
+
 		list = append(list, openapi.CapturedRequest{
 			CapturedAtUnixMilli:  r.CreatedAtUnixMilli,
 			ClientAddress:        r.ClientAddr,
@@ -48,6 +63,7 @@ func (h *Handler) Handle(ctx context.Context, sID sID) (*openapi.CapturedRequest
 			RequestPayloadBase64: base64.StdEncoding.EncodeToString(r.Body),
 			Url:                  r.URL,
 			Uuid:                 rUUID,
+			Files:                rFiles,
 		})
 
 		// sort the list by the captured time from newest to oldest

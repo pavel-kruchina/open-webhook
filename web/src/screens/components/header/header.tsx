@@ -1,4 +1,4 @@
-import { Burger, Button, Center, Group, Image, Popover } from '@mantine/core'
+import { Burger, Button, Center, Group, Popover, Text } from '@mantine/core'
 import { useClipboard, useDisclosure } from '@mantine/hooks'
 import { notifications as notify } from '@mantine/notifications'
 import {
@@ -8,30 +8,24 @@ import {
   IconCirclePlusFilled,
   IconCopy,
   IconHelpHexagonFilled,
-  IconRefreshAlert,
   IconUsersGroup,
 } from '@tabler/icons-react'
 import React, { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import type { SemVer } from 'semver'
-import LogoTextSvg from '~/assets/logo-text.svg'
 import { useData, useSettings } from '~/shared'
 import { HelpModal, NewSessionModal, SessionSwitch, UISettings } from './components'
 
 export const Header: React.FC<{
   currentVersion: SemVer | null
-  latestVersion: SemVer | null
   isBurgerOpened: boolean
   onBurgerClick: () => void
-}> = ({ currentVersion, latestVersion, isBurgerOpened = false, onBurgerClick = () => {} }) => {
+}> = ({ currentVersion, isBurgerOpened = false, onBurgerClick = () => {} }) => {
   const clipboard = useClipboard({ timeout: 500 })
   const { webHookUrl, allSessionIDs } = useData()
   const { tunnelEnabled, tunnelUrl } = useSettings()
   const [isNewSessionModalOpened, newSessionModalHandlers] = useDisclosure(false)
   const [isHelpModalOpened, helpModalHandlers] = useDisclosure(false)
-
-  const isUpdateAvailable: boolean | null =
-    currentVersion && latestVersion && currentVersion.compare(latestVersion) === -1
 
   /** Handle copying the webhook URL to the clipboard */
   const handleCopyWebhookUrl = useCallback(() => {
@@ -55,13 +49,15 @@ export const Header: React.FC<{
       <Group h="100%" px="md" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Burger opened={isBurgerOpened} onClick={onBurgerClick} hiddenFrom="sm" size="sm" />
         <Group>
-          <Image
-            src={LogoTextSvg}
-            h={20}
-            w="auto"
-            fit="scale-down"
+          <Text
+            fw={700}
+            fz="lg"
+            ff="monospace"
+            style={{ whiteSpace: 'nowrap', letterSpacing: '-0.02em' }}
             title={currentVersion ? 'v' + currentVersion.toString() : undefined}
-          />
+          >
+            open-webhook
+          </Text>
           <Button.Group visibleFrom="sm">
             <Button
               variant="default"
@@ -87,30 +83,16 @@ export const Header: React.FC<{
           </Button.Group>
 
           <Button.Group visibleFrom="lg">
-            {isUpdateAvailable && !!latestVersion ? (
-              <Button
-                variant="default"
-                size="xs"
-                leftSection={<IconRefreshAlert size="1.3em" />}
-                component={Link}
-                to={__LATEST_RELEASE_LINK__}
-                rel="preload"
-                target="_blank"
-              >
-                Update available {!!latestVersion && <>(v{latestVersion.toString()})</>}
-              </Button>
-            ) : (
-              <Button
-                variant="default"
-                size="xs"
-                leftSection={<IconBrandGithubFilled size="1.3em" />}
-                component={Link}
-                to={__GITHUB_PROJECT_LINK__}
-                target="_blank"
-              >
-                GitHub
-              </Button>
-            )}
+            <Button
+              variant="default"
+              size="xs"
+              leftSection={<IconBrandGithubFilled size="1.3em" />}
+              component={Link}
+              to={__GITHUB_PROJECT_LINK__}
+              target="_blank"
+            >
+              GitHub
+            </Button>
           </Button.Group>
         </Group>
         <Group visibleFrom="xs">

@@ -11,15 +11,18 @@ services:
   app-http:
     build: *app-build
     env_file: *app-env-file
-    command: go run ./cmd/webhook-tester/ start --use-live-frontend --auto-create-sessions --max-requests 16
-    volumes: [.:/src:rw]
+    environment: {REDIS_DSN: 'redis://redis:6379/0'}
+    command: go run ./cmd/webhook-tester/ start --use-live-frontend --auto-create-sessions --max-requests 16 --files-dir /data/files
+    volumes: [.:/src:rw, app-files-data:/data/files:rw]
     ports: ['8080:8080/tcp'] # open http://127.0.0.1:8080
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:8080/healthz']
       start_interval: 1s
       interval: 10s
       start_period: 10s
-    depends_on: {app-web-dist: {condition: service_healthy}}
+    depends_on:
+      app-web-dist: {condition: service_healthy}
+      redis: {condition: service_healthy}
     security_opt: [no-new-privileges:true]
 
   app-web-dist:
@@ -75,4 +78,5 @@ services:
 volumes:
   app-modules-cache: {}
   app-tmp-data: {}
+  app-files-data: {}
   redis-data: {}

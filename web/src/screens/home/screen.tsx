@@ -99,7 +99,7 @@ export function HomeScreen(): React.JSX.Element {
   return (
     <>
       <Title order={3} style={{ fontWeight: 300 }}>
-        WebHook Tester allows you to easily test webhooks and other types of HTTP requests
+        open-webhook allows you to easily test webhooks and other types of HTTP requests
       </Title>
       <Title order={5} c="dimmed" pt={5} style={{ fontWeight: 300 }}>
         Any requests sent to that URL are logged here instantly — you don&apos;t even have to refresh!

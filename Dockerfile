@@ -104,8 +104,8 @@ ENV \
   LOG_FORMAT=json \
   # logging level
   LOG_LEVEL=info \
-  # default fs storage directory
-  FS_STORAGE_DIR=/data
+  # default directory for storing uploaded files (from multipart/form-data requests)
+  FILES_DIR=/data
 
 #EXPOSE "8080/tcp"
 

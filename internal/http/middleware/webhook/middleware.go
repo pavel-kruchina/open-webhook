@@ -1,10 +1,13 @@
 package webhook
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"slices"
@@ -12,9 +15,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"gh.tarampamp.am/webhook-tester/v2/internal/config"
+	"gh.tarampamp.am/webhook-tester/v2/internal/files"
 	"gh.tarampamp.am/webhook-tester/v2/internal/http/openapi"
 	"gh.tarampamp.am/webhook-tester/v2/internal/pubsub"
 	"gh.tarampamp.am/webhook-tester/v2/internal/storage"
@@ -24,6 +29,7 @@ func New( //nolint:funlen,gocognit,gocyclo
 	appCtx context.Context,
 	log *zap.Logger,
 	db storage.Storage,
+	fileStore files.Storage,
 	pub pubsub.Publisher[pubsub.RequestEvent],
 	cfg *config.AppSettings,
 ) func(http.Handler) http.Handler {
@@ -34,6 +40,14 @@ func New( //nolint:funlen,gocognit,gocyclo
 				next.ServeHTTP(w, r)
 
 				return
+			}
+
+			// serve a stored file download: GET|HEAD /{session_uuid}/files/{file_uuid}
+			// if the file is unknown, fall through and capture the request as usual
+			if fID, isDownload := fileDownloadTarget(r, sID); isDownload {
+				if serveFile(r.Context(), w, r, db, fileStore, log, sID, fID) { //nolint:contextcheck
+					return
+				}
 			}
 
 			var reqCtx = r.Context()
@@ -104,6 +118,17 @@ func New( //nolint:funlen,gocognit,gocyclo
 				return
 			}
 
+			// if the request is a multipart/form-data upload, extract its files to the file storage and replace
+			// the stored body with a sanitized version (form fields + file placeholders, without the file bytes)
+			var capturedFiles []storage.RequestFile
+			if ct := r.Header.Get("Content-Type"); ct != "" {
+				if mediaType, params, mErr := mime.ParseMediaType(ct); mErr == nil && strings.HasPrefix(mediaType, "multipart/") {
+					if boundary := params["boundary"]; boundary != "" {
+						capturedFiles, body = extractMultipartFiles(reqCtx, fileStore, sID, body, boundary, log) //nolint:contextcheck
+					}
+				}
+			}
+
 			// convert request headers into the storage format
 			var rHeaders = make([]storage.HttpHeader, 0, len(r.Header))
 			for name, value := range r.Header {
@@ -120,6 +145,7 @@ func New( //nolint:funlen,gocognit,gocyclo
 				Body:       body,
 				Headers:    rHeaders,
 				URL:        extractFullUrl(r),
+				Files:      capturedFiles,
 			})
 			if rErr != nil {
 				respondWithError(w, log, http.StatusInternalServerError, rErr.Error())
@@ -215,6 +241,179 @@ func shouldCaptureRequest(r *http.Request) (string, bool) {
 	}
 
 	return "", false
+}
+
+// fileDownloadTarget reports whether the request targets a stored file download
+// (GET|HEAD /{session_uuid}/files/{file_uuid}) and returns the requested file UUID.
+func fileDownloadTarget(r *http.Request, sID string) (fileUUID string, _ bool) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return "", false
+	}
+
+	if r.URL == nil {
+		return "", false
+	}
+
+	// expected path: <sID>/files/<fID>
+	var parts = strings.Split(strings.TrimLeft(r.URL.Path, "/"), "/")
+	if len(parts) != 3 || parts[0] != sID || parts[1] != "files" { //nolint:mnd
+		return "", false
+	}
+
+	if !openapi.IsValidUUID(parts[2]) {
+		return "", false
+	}
+
+	return parts[2], true
+}
+
+// serveFile streams a stored file to the client if it belongs to the given session. It returns true if the
+// response was handled (served or a definitive error written), and false if the caller should fall through
+// to the normal request-capture flow (e.g. the file is not known to this session).
+func serveFile(
+	ctx context.Context,
+	w http.ResponseWriter,
+	r *http.Request,
+	db storage.Storage,
+	fileStore files.Storage,
+	log *zap.Logger,
+	sID, fID string,
+) bool {
+	// the file must be referenced by one of the session's captured requests (enforces session isolation)
+	meta, found := findFileMeta(ctx, db, sID, fID)
+	if !found {
+		return false
+	}
+
+	rc, err := fileStore.Open(ctx, sID, fID)
+	if err != nil {
+		// metadata exists but the file is missing on disk (e.g. cleaned up) - treat as not found
+		log.Warn("file metadata found but content is missing", zap.String("session", sID), zap.String("file", fID))
+
+		return false
+	}
+
+	defer func() { _ = rc.Close() }()
+
+	var contentType = meta.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Length", strconv.FormatInt(meta.Size, 10))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", sanitizeFileName(meta.Name)))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+
+	if r.Method == http.MethodHead {
+		return true
+	}
+
+	if _, err = io.Copy(w, rc); err != nil {
+		log.Error("failed to stream the file", zap.String("session", sID), zap.String("file", fID), zap.Error(err))
+	}
+
+	return true
+}
+
+// findFileMeta looks up the metadata of a file (by its UUID) among all requests of the session.
+func findFileMeta(ctx context.Context, db storage.Storage, sID, fID string) (storage.RequestFile, bool) {
+	all, err := db.GetAllRequests(ctx, sID)
+	if err != nil {
+		return storage.RequestFile{}, false
+	}
+
+	for _, req := range all {
+		for _, f := range req.Files {
+			if f.UUID == fID {
+				return f, true
+			}
+		}
+	}
+
+	return storage.RequestFile{}, false
+}
+
+// sanitizeFileName strips characters that could break the Content-Disposition header.
+func sanitizeFileName(name string) string {
+	name = strings.NewReplacer("\"", "", "\\", "", "\r", "", "\n", "").Replace(name)
+	if name == "" {
+		return "file"
+	}
+
+	return name
+}
+
+// extractMultipartFiles parses a multipart/form-data body, stores every file part in the file storage, and
+// returns the extracted files' metadata together with a sanitized body. The sanitized body preserves the form
+// structure (regular fields and file part headers) but replaces file contents with a short placeholder, so the
+// file bytes are never stored in the request storage. On any parse error it returns what it managed to extract
+// along with the original body unchanged when no files were found.
+func extractMultipartFiles(
+	ctx context.Context,
+	fileStore files.Storage,
+	sID string,
+	body []byte,
+	boundary string,
+	log *zap.Logger,
+) ([]storage.RequestFile, []byte) {
+	var (
+		reader    = multipart.NewReader(bytes.NewReader(body), boundary)
+		extracted []storage.RequestFile
+		buf       bytes.Buffer
+		writer    = multipart.NewWriter(&buf)
+	)
+
+	// keep the same boundary so the sanitized body stays consistent with the original Content-Type header
+	_ = writer.SetBoundary(boundary)
+
+	for {
+		part, err := reader.NextPart()
+		if err != nil {
+			break // io.EOF or a malformed body - stop and keep what we have
+		}
+
+		if part.FileName() != "" { // a file part
+			var (
+				fileUUID    = uuid.New().String()
+				contentType = part.Header.Get("Content-Type")
+			)
+
+			size, sErr := fileStore.Create(ctx, sID, fileUUID, part)
+			if sErr != nil {
+				log.Error("failed to store an uploaded file", zap.String("session", sID), zap.Error(sErr))
+				_ = part.Close()
+
+				continue
+			}
+
+			extracted = append(extracted, storage.RequestFile{
+				UUID:        fileUUID,
+				Name:        part.FileName(),
+				ContentType: contentType,
+				Size:        size,
+			})
+
+			if ph, wErr := writer.CreateFormFile(part.FormName(), part.FileName()); wErr == nil {
+				_, _ = fmt.Fprintf(ph, "[stored file: %s (%d bytes), id: %s]", part.FileName(), size, fileUUID)
+			}
+		} else { // a regular form field - copy its value through
+			if fw, wErr := writer.CreateFormField(part.FormName()); wErr == nil {
+				_, _ = io.Copy(fw, part)
+			}
+		}
+
+		_ = part.Close()
+	}
+
+	_ = writer.Close()
+
+	if len(extracted) == 0 {
+		return nil, body // nothing was extracted - keep the original body unchanged
+	}
+
+	return extracted, buf.Bytes()
 }
 
 // TODO: add supporting of format requested by the user (json, html, plain text, etc).

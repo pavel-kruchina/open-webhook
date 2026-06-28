@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"gh.tarampamp.am/webhook-tester/v2/internal/http/openapi"
 	"gh.tarampamp.am/webhook-tester/v2/internal/storage"
 )
@@ -37,5 +39,26 @@ func (h *Handler) Handle(ctx context.Context, sID sID, rID rID) (*openapi.Captur
 		RequestPayloadBase64: base64.StdEncoding.EncodeToString(r.Body),
 		Url:                  r.URL,
 		Uuid:                 rID,
+		Files:                convertFiles(r.Files),
 	}, nil
+}
+
+// convertFiles maps storage file metadata to the OpenAPI representation.
+func convertFiles(in []storage.RequestFile) []openapi.RequestFile {
+	var out = make([]openapi.RequestFile, 0, len(in))
+	for _, f := range in {
+		fUUID, err := uuid.Parse(f.UUID)
+		if err != nil {
+			continue
+		}
+
+		out = append(out, openapi.RequestFile{
+			Uuid:        fUUID,
+			Name:        f.Name,
+			ContentType: f.ContentType,
+			Size:        f.Size,
+		})
+	}
+
+	return out
 }

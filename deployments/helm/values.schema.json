@@ -301,16 +301,10 @@
             }
           }
         },
-        "storage": {
+        "files": {
           "type": "object",
           "properties": {
-            "driver": {
-              "oneOf": [
-                {"type": "string", "enum": ["memory", "redis", "fs"]},
-                {"type": "null"}
-              ]
-            },
-            "dirPath": {
+            "dir": {
               "oneOf": [
                 {"type": "string"},
                 {"type": "null"}

@@ -10,7 +10,7 @@ import { methodToColor } from '~/theme'
 import { ViewHex, ViewText } from './components'
 
 export const RequestDetails: React.FC<{ loading?: boolean }> = ({ loading = false }) => {
-  const { session, request } = useData()
+  const { session, request, webHookUrl } = useData()
   const { showRequestDetails } = useSettings()
 
   const [headersExpanded, setHeadersExpanded] = useStorage<boolean>(false, UsedStorageKeys.RequestDetailsHeadersExpand)
@@ -150,6 +150,58 @@ export const RequestDetails: React.FC<{ loading?: boolean }> = ({ loading = fals
         </>
       )}
 
+      {!loading && !!request && request.files.length > 0 && (
+        <Grid.Col span={12}>
+          <Title order={4} mb="md">
+            Files
+            <Text span c="dimmed" size="sm" ml="xs">
+              ({request.files.length})
+            </Text>
+          </Title>
+          <Text size="xs" c="dimmed" mb="sm">
+            Files extracted from the multipart/form-data body. They are stored on the server and served only through
+            this app.
+          </Text>
+          <Table withTableBorder withRowBorders verticalSpacing="xs" highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Name</Table.Th>
+                <Table.Th>Type</Table.Th>
+                <Table.Th>Size</Table.Th>
+                <Table.Th />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {request.files.map((file) => (
+                <Table.Tr key={file.uuid}>
+                  <Table.Td style={{ wordBreak: 'break-all' }}>{file.name}</Table.Td>
+                  <Table.Td>
+                    <Text size="sm" c="dimmed" span>
+                      {file.contentType || 'application/octet-stream'}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>{formatBytes(file.size)}</Table.Td>
+                  <Table.Td ta="right">
+                    <Button
+                      variant="light"
+                      color="indigo"
+                      size="compact-sm"
+                      leftSection={<IconDownload size="1.2em" />}
+                      component="a"
+                      href={fileDownloadUrl(webHookUrl, file.uuid)}
+                      download={file.name}
+                      disabled={!webHookUrl}
+                    >
+                      Download
+                    </Button>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Grid.Col>
+      )}
+
       <Grid.Col span={12}>
         <Title order={4} mb="md">
           Request body
@@ -234,6 +286,36 @@ export const WebHookPath: React.FC<{ sID: string; url: URL }> = ({ sID, url }) =
       </Button>
     </Text>
   )
+}
+
+/** Builds the in-app download URL for a stored file: {webhook-url}/files/{file-uuid}. */
+const fileDownloadUrl = (webHookUrl: Readonly<URL> | null, fileUUID: string): string => {
+  if (!webHookUrl) {
+    return '#'
+  }
+
+  const u = new URL(webHookUrl.toString())
+  u.pathname = `${u.pathname.replace(/\/+$/, '')}/files/${encodeURIComponent(fileUUID)}`
+
+  return u.toString()
+}
+
+/** Formats a byte count into a human-readable string. */
+const formatBytes = (bytes: number): string => {
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+
+  const units = ['KiB', 'MiB', 'GiB', 'TiB']
+  let value = bytes / 1024
+  let unitIndex = 0
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex++
+  }
+
+  return `${value.toFixed(1)} ${units[unitIndex]}`
 }
 
 const download = (data: Readonly<Uint8Array>, fileName: string): void => {
