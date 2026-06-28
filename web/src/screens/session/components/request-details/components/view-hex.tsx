@@ -10,7 +10,7 @@ export const ViewHex: React.FC<{
   lengthLimit?: number
 }> = ({
   input,
-  lengthLimit = 1024 * 24, // 24KB
+  lengthLimit = 1024 * 128, // 128KB
 }) => {
   const [lineNumberType, setLineNumberType] = useState<NumberBase>(NumberBase.Hexadecimal)
   const [displayType, setDisplayType] = useState<NumberBase>(NumberBase.Hexadecimal)
@@ -82,7 +82,7 @@ export const ViewHex: React.FC<{
     <>
       {trimmed && (
         <Alert color="yellow" my="sm" title="Data trimmed" icon={<IconInfoCircle />}>
-          The request body is large and has been trimmed to {lengthLimit} bytes for performance reasons.
+          The request body is large and has been trimmed to {Math.round(lengthLimit / 1024)} KB for performance reasons.
         </Alert>
       )}
       <Grid my="sm" justify="space-between" align="stretch" gutter="lg" grow>

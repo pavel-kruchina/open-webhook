@@ -11,7 +11,6 @@ import {
   IconBrandWindows,
   IconCup,
   IconDiamond,
-  IconExternalLink,
   IconRun,
 } from '@tabler/icons-react'
 import dayjs from 'dayjs'
@@ -76,29 +75,17 @@ export const SessionDetails: React.FC<{ loading?: boolean }> = ({ loading = fals
           <Text>Here&apos;s your unique URL:</Text>
           <Flex my="md" align="center" justify="space-between" gap="xs" direction={{ base: 'column', lg: 'row' }}>
             <CodeHighlight code={webHookUrl.toString()} language="bash" w="100%" />
-            <Button.Group w={{ base: '100%', lg: 'auto' }}>
-              <Button
-                variant="gradient"
-                gradient={{ from: 'cyan', to: 'teal', deg: 90 }}
-                leftSection={<IconExternalLink size="1.4em" />}
-                component="a"
-                href={webHookUrl.toString()}
-                target="_blank"
-                disabled={loading}
-              >
-                Open in a new tab
-              </Button>
-              <Button
-                variant="gradient"
-                gradient={{ from: 'teal', to: 'cyan', deg: 90 }}
-                leftSection={<IconRun size="1.5em" />}
-                onClick={handleSendTestRequest}
-                onAuxClick={handleSendTestRequest}
-                disabled={loading}
-              >
-                Send a request
-              </Button>
-            </Button.Group>
+            <Button
+              variant="gradient"
+              gradient={{ from: 'teal', to: 'cyan', deg: 90 }}
+              leftSection={<IconRun size="1.5em" />}
+              onClick={handleSendTestRequest}
+              onAuxClick={handleSendTestRequest}
+              disabled={loading}
+              w={{ base: '100%', lg: 'auto' }}
+            >
+              Send a request
+            </Button>
           </Flex>
           <Text>Send simple POST request (execute next command in your terminal without leaving this page):</Text>
           <CodeHighlightTabs

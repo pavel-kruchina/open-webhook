@@ -1,10 +1,21 @@
 import type React from 'react'
-import { Checkbox, Stack, Text } from '@mantine/core'
+import { ActionIcon, Button, Checkbox, Group, Stack, Text } from '@mantine/core'
+import { IconMinus, IconPlus } from '@tabler/icons-react'
 import { useBrowserNotifications, useSettings } from '~/shared'
 
+const SCALE_MIN = 0.8
+const SCALE_MAX = 1.4
+const SCALE_STEP = 0.1
+
 export const UISettings = (): React.JSX.Element => {
-  const { autoNavigateToNewRequest, showRequestDetails, showNativeRequestNotifications, updateSettings } = useSettings()
+  const { autoNavigateToNewRequest, showRequestDetails, showNativeRequestNotifications, uiScale, updateSettings } =
+    useSettings()
   const { granted, request } = useBrowserNotifications()
+
+  const scale = uiScale ?? 1
+  /** Clamp to the allowed range and round to avoid floating-point drift */
+  const setScale = (value: number): void =>
+    updateSettings({ uiScale: Math.round(Math.min(SCALE_MAX, Math.max(SCALE_MIN, value)) * 10) / 10 })
 
   /** Handle the change of the native notifications setting */
   const handleNativeNotificationsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -19,6 +30,35 @@ export const UISettings = (): React.JSX.Element => {
 
   return (
     <Stack>
+      <div>
+        <Text size="sm" mb={4}>
+          Interface scale
+        </Text>
+        <Group gap="xs">
+          <ActionIcon
+            variant="default"
+            onClick={() => setScale(scale - SCALE_STEP)}
+            disabled={scale <= SCALE_MIN}
+            aria-label="Decrease interface scale"
+          >
+            <IconMinus size="1rem" />
+          </ActionIcon>
+          <Text size="sm" w={48} ta="center">
+            {Math.round(scale * 100)}%
+          </Text>
+          <ActionIcon
+            variant="default"
+            onClick={() => setScale(scale + SCALE_STEP)}
+            disabled={scale >= SCALE_MAX}
+            aria-label="Increase interface scale"
+          >
+            <IconPlus size="1rem" />
+          </ActionIcon>
+          <Button variant="subtle" size="compact-xs" onClick={() => setScale(1)} disabled={scale === 1}>
+            Reset
+          </Button>
+        </Group>
+      </div>
       <Checkbox
         checked={autoNavigateToNewRequest}
         onChange={(event) => updateSettings({ autoNavigateToNewRequest: event.target.checked })}

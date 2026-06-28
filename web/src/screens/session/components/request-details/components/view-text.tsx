@@ -13,7 +13,7 @@ export const ViewText: React.FC<{
 }> = ({
   input,
   contentType = null,
-  lengthLimit = 1024 * 128, // 128KB
+  lengthLimit = 1024 * 1024, // 1MB
 }) => {
   const [content, setContent] = useState<string | null>(null)
   const [language, setLanguage] = useState<'json' | 'xml' | null>(null)
@@ -49,7 +49,7 @@ export const ViewText: React.FC<{
     <>
       {trimmed && (
         <Alert color="yellow" my="sm" title="Data trimmed" icon={<IconInfoCircle />}>
-          The request body is large and has been trimmed to {lengthLimit} bytes for performance reasons.
+          The request body is large and has been trimmed to {Math.round(lengthLimit / 1024)} KB for performance reasons.
         </Alert>
       )}
       {!!content && language ? <CodeHighlight code={content} language={language} /> : <Code block>{content}</Code>}

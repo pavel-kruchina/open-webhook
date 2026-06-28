@@ -6,6 +6,7 @@ type Settings = {
   showRequestDetails: boolean
   autoNavigateToNewRequest: boolean
   showNativeRequestNotifications: boolean
+  uiScale: number // interface scale factor (1 = 100%), applied via the Mantine scale CSS variable
   // server-side setting:
   maxRequestsPerSession: number | null
   maxRequestBodySize: number | null
@@ -27,6 +28,7 @@ const defaults: Readonly<Settings> = {
   showRequestDetails: true,
   autoNavigateToNewRequest: true,
   showNativeRequestNotifications: false,
+  uiScale: 1,
   maxRequestsPerSession: null,
   maxRequestBodySize: null,
   sessionTTLSec: null,
@@ -50,6 +52,7 @@ export const SettingsProvider = ({ children }: { children: React.JSX.Element }) 
   return (
     <uiSettingsContext.Provider
       value={{
+        ...defaults, // ensure newly-added fields fall back to defaults for older stored settings
         ...settings,
         updateSettings,
       }}
