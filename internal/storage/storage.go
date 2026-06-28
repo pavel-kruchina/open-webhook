@@ -70,12 +70,22 @@ type (
 
 	// Request describes recorded request and additional meta-data.
 	Request struct {
-		ClientAddr         string       `json:"client_addr"`           // client hostname or IP address
-		Method             string       `json:"method"`                // HTTP method name (i.e., 'GET', 'POST')
-		Body               []byte       `json:"body"`                  // request body (payload)
-		Headers            []HttpHeader `json:"headers"`               // HTTP request headers
-		URL                string       `json:"url"`                   // Uniform Resource Identifier
-		CreatedAtUnixMilli int64        `json:"created_at_unit_milli"` // creation time
+		ClientAddr         string        `json:"client_addr"`           // client hostname or IP address
+		Method             string        `json:"method"`                // HTTP method name (i.e., 'GET', 'POST')
+		Body               []byte        `json:"body"`                  // request body (payload)
+		Headers            []HttpHeader  `json:"headers"`               // HTTP request headers
+		URL                string        `json:"url"`                   // Uniform Resource Identifier
+		CreatedAtUnixMilli int64         `json:"created_at_unit_milli"` // creation time
+		Files              []RequestFile `json:"files,omitempty"`       // files extracted from a multipart body
+	}
+
+	// RequestFile describes a file extracted from a multipart/form-data request body. The file content itself is
+	// stored on the local filesystem (never in this storage); only the metadata is kept here.
+	RequestFile struct {
+		UUID        string `json:"uuid"`         // unique file identifier (also the on-disk file name)
+		Name        string `json:"name"`         // original file name from the upload
+		ContentType string `json:"content_type"` // MIME type of the file, e.g. "image/jpeg"
+		Size        int64  `json:"size"`         // file size in bytes
 	}
 
 	HttpHeader struct {

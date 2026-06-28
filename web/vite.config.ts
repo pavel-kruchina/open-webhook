@@ -22,8 +22,7 @@ export default defineConfig({
     },
   },
   define: {
-    __GITHUB_PROJECT_LINK__: JSON.stringify('https://github.com/tarampampam/webhook-tester'),
-    __LATEST_RELEASE_LINK__: JSON.stringify('https://github.com/tarampampam/webhook-tester/releases/latest'),
+    __GITHUB_PROJECT_LINK__: JSON.stringify('https://github.com/pavel-kruchina/open-webhook'),
   },
   build: {
     emptyOutDir: true,

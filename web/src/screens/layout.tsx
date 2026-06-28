@@ -14,16 +14,14 @@ export default function DefaultLayout({ api }: { api: Client }): React.JSX.Eleme
   const [scroll, scrollTo] = useWindowScroll()
   const [navBarIsOpened, navBarHandlers] = useDisclosure()
   const [currentVersion, setCurrentVersion] = useState<SemVer | null>(null)
-  const [latestVersion, setLatestVersion] = useState<SemVer | null>(null)
   const { updateSettings } = useSettings()
   const { session } = useData()
 
-  // load current and latest versions&settings on mount
+  // load current version & settings on mount
   useEffect(() => {
     const errHandler: (err: Error | unknown) => void = console.error
 
     api.currentVersion().then(setCurrentVersion).catch(errHandler)
-    api.latestVersion().then(setLatestVersion).catch(errHandler)
     api
       .getSettings()
       .then((s) =>
@@ -63,7 +61,6 @@ export default function DefaultLayout({ api }: { api: Client }): React.JSX.Eleme
       <AppShell.Header style={{ zIndex: 103 }}>
         <Header
           currentVersion={currentVersion}
-          latestVersion={latestVersion}
           isBurgerOpened={navBarIsOpened}
           onBurgerClick={navBarHandlers.toggle}
         />

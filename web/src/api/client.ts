@@ -31,6 +31,14 @@ type SessionOptions = Readonly<{
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS' | 'CONNECT' | 'TRACE' | string
 
+/** A file extracted from a captured multipart/form-data request body (stored on the server, downloadable via the app). */
+type CapturedFile = Readonly<{
+  uuid: string
+  name: string
+  contentType: string
+  size: number
+}>
+
 type CapturedRequest = Readonly<{
   uuid: string
   clientAddress: string
@@ -39,7 +47,18 @@ type CapturedRequest = Readonly<{
   headers: ReadonlyArray<{ name: string; value: string }>
   url: Readonly<URL>
   capturedAt: Readonly<Date>
+  files: ReadonlyArray<CapturedFile>
 }>
+
+/** Maps a captured-request file from the API schema to the immutable client type. */
+const mapFiles = (
+  files: ReadonlyArray<{ uuid: string; name: string; content_type: string; size: number }>
+): ReadonlyArray<CapturedFile> =>
+  Object.freeze(
+    Array.from(files).map((f) =>
+      Object.freeze({ uuid: f.uuid, name: f.name, contentType: f.content_type, size: f.size })
+    )
+  )
 
 type RequestEvent = Readonly<{
   action: RequestEventAction
@@ -301,6 +320,7 @@ export class Client {
               headers: Object.freeze(Array.from(req.headers).map(({ name, value }) => Object.freeze({ name, value }))),
               url: Object.freeze(new URL(req.url)),
               capturedAt: Object.freeze(new Date(req.captured_at_unix_milli)),
+              files: mapFiles(Array.from(req.files)),
             })
           )
           // sort the list by capturedAt date, to have the latest requests first
@@ -423,6 +443,7 @@ export class Client {
         headers: Object.freeze(Array.from(data.headers)),
         url: Object.freeze(new URL(data.url)),
         capturedAt: Object.freeze(new Date(data.captured_at_unix_milli)),
+        files: mapFiles(Array.from(data.files)),
       })
     }
 

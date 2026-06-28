@@ -46,7 +46,7 @@ deployment:
   # -- Additional volumes to add to the pod, more information can be found here:
   #    https://kubernetes.io/docs/concepts/storage/volumes/
   volumes: [] # supports templating
-  # -- Additional volumeMounts to add to the container (for instance when using fs storage driver)
+  # -- Additional volumeMounts to add to the container (for instance to persist the uploaded files directory)
   volumeMounts: [] # supports templating
   # -- Node selector for pod assignment, more information can be found here:
   #    https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
@@ -118,13 +118,11 @@ config:
     # @default 15s
     shutdown: null
 
-  storage:
-    # -- Storage driver (memory|redis|fs)
-    # @default memory
-    driver: null
-    # -- Path to the directory for local fs storage (directory must exist)
+  # Requests are always stored in Redis (configure the connection via `redis.dsn` below).
+  files:
+    # -- Directory for storing files uploaded via multipart/form-data (must exist and be writable)
     # @default /data (defined in the Dockerfile)
-    dirPath: null
+    dir: null
 
   pubsub:
     # -- Pub/Sub driver (memory|redis)

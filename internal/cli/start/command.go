@@ -19,6 +19,7 @@ import (
 	"gh.tarampamp.am/webhook-tester/v2/internal/cli/start/healthcheck"
 	"gh.tarampamp.am/webhook-tester/v2/internal/config"
 	"gh.tarampamp.am/webhook-tester/v2/internal/encoding"
+	"gh.tarampamp.am/webhook-tester/v2/internal/files"
 	appHttp "gh.tarampamp.am/webhook-tester/v2/internal/http"
 	"gh.tarampamp.am/webhook-tester/v2/internal/logger"
 	"gh.tarampamp.am/webhook-tester/v2/internal/pubsub"
@@ -41,10 +42,11 @@ type (
 				shutdown                      time.Duration // maximum amount of time to wait for the server to stop
 			}
 			storage struct {
-				driver      string        // storage driver
 				sessionTTL  time.Duration // session TTL
 				maxRequests uint16        // maximal number of requests
-				fsDir       string        // path to the directory for local fs storage
+			}
+			files struct {
+				dir string // path to the directory for storing uploaded files (mandatory)
 			}
 			pubSub struct {
 				driver string // Pub/Sub driver
@@ -69,9 +71,8 @@ type (
 )
 
 const (
-	pubSubDriverMemory, pubSubDriverRedis                    = "memory", "redis"
-	storageDriverMemory, storageDriverRedis, storageDriverFS = "memory", "redis", "fs"
-	tunnelDriverNgrok                                        = "ngrok"
+	pubSubDriverMemory, pubSubDriverRedis = "memory", "redis"
+	tunnelDriverNgrok                     = "ngrok"
 )
 
 // NewCommand creates new `start` command.
@@ -143,26 +144,6 @@ func NewCommand(log *zap.Logger, defaultHttpPort uint16) *cli.Command { //nolint
 			OnlyOnce:  true,
 			Validator: validateDuration("idle timeout", time.Millisecond, time.Hour),
 		}
-		storageDriverFlag = cli.StringFlag{
-			Name:  "storage-driver",
-			Value: storageDriverMemory,
-			Usage: "storage driver (" + strings.Join([]string{
-				storageDriverMemory,
-				storageDriverRedis,
-				storageDriverFS,
-			}, "/") + ")",
-			Sources:  cli.EnvVars("STORAGE_DRIVER"),
-			OnlyOnce: true,
-			Config:   cli.StringConfig{TrimSpace: true},
-			Validator: func(s string) error {
-				switch s {
-				case storageDriverMemory, storageDriverRedis, storageDriverFS:
-					return nil
-				default:
-					return fmt.Errorf("wrong storage driver [%s]", s)
-				}
-			},
-		}
 		storageSessionTTLFlag = cli.DurationFlag{
 			Name:      "session-ttl",
 			Usage:     "session TTL (time-to-live, lifetime)",
@@ -185,13 +166,20 @@ func NewCommand(log *zap.Logger, defaultHttpPort uint16) *cli.Command { //nolint
 				return nil
 			},
 		}
-		storageFsDirFlag = cli.StringFlag{
-			Name:     "fs-storage-dir",
-			Usage:    "path to the directory for local fs storage (directory must exist)",
-			Sources:  cli.EnvVars("FS_STORAGE_DIR"),
+		filesDirFlag = cli.StringFlag{
+			Name:     "files-dir",
+			Usage:    "path to the directory for storing files uploaded via multipart/form-data (must exist and be writable)",
+			Sources:  cli.EnvVars("FILES_DIR"),
 			OnlyOnce: true,
+			Required: true,
 			Validator: func(s string) error {
-				if stat, err := os.Stat(s); err == nil && !stat.IsDir() {
+				if s == "" {
+					return errors.New("files directory is required")
+				}
+
+				if stat, err := os.Stat(s); err != nil {
+					return fmt.Errorf("files directory [%s]: %w", s, err)
+				} else if !stat.IsDir() {
 					return fmt.Errorf("not a directory [%s]", s)
 				}
 
@@ -311,10 +299,9 @@ func NewCommand(log *zap.Logger, defaultHttpPort uint16) *cli.Command { //nolint
 			opt.timeouts.httpRead = c.Duration(httpReadTimeoutFlag.Name)
 			opt.timeouts.httpWrite = c.Duration(httpWriteTimeoutFlag.Name)
 			opt.timeouts.httpIdle = c.Duration(httpIdleTimeoutFlag.Name)
-			opt.storage.driver = c.String(storageDriverFlag.Name)
 			opt.storage.sessionTTL = c.Duration(storageSessionTTLFlag.Name)
 			opt.storage.maxRequests = uint16(c.Uint(storageMaxRequestsFlag.Name)) //nolint:gosec
-			opt.storage.fsDir = c.String(storageFsDirFlag.Name)
+			opt.files.dir = c.String(filesDirFlag.Name)
 			opt.maxRequestPayloadSize = uint32(c.Uint(maxRequestPayloadSizeFlag.Name)) //nolint:gosec
 			opt.autoCreateSessions = c.Bool(autoCreateSessionsFlag.Name)
 			opt.pubSub.driver = c.String(pubSubDriverFlag.Name)
@@ -339,10 +326,9 @@ func NewCommand(log *zap.Logger, defaultHttpPort uint16) *cli.Command { //nolint
 			&httpReadTimeoutFlag,
 			&httpWriteTimeoutFlag,
 			&httpIdleTimeoutFlag,
-			&storageDriverFlag,
 			&storageSessionTTLFlag,
 			&storageMaxRequestsFlag,
-			&storageFsDirFlag,
+			&filesDirFlag,
 			&maxRequestPayloadSizeFlag,
 			&autoCreateSessionsFlag,
 			&pubSubDriverFlag,
@@ -377,6 +363,29 @@ func validateDuration(name string, minValue, maxValue time.Duration) func(d time
 	}
 }
 
+// verifyWritableDir ensures the given path is an existing directory we can write to.
+func verifyWritableDir(dir string) error {
+	stat, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+
+	if !stat.IsDir() {
+		return fmt.Errorf("not a directory [%s]", dir)
+	}
+
+	// probe writability by creating and removing a temporary file
+	f, err := os.CreateTemp(dir, ".write-probe-*")
+	if err != nil {
+		return fmt.Errorf("directory is not writable: %w", err)
+	}
+
+	_ = f.Close()
+	_ = os.Remove(f.Name())
+
+	return nil
+}
+
 // validateURL validates a URL flag value, ensuring it has a scheme and host.
 func validateURL(s string) error {
 	if s == "" {
@@ -400,63 +409,52 @@ func (cmd *command) Run(parentCtx context.Context, log *zap.Logger) error { //no
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
-	var rdc *redis.Client // may be nil
+	// requests are always stored in Redis - establish the connection (required)
+	var opt, pErr = redis.ParseURL(cmd.options.redis.dsn)
+	if pErr != nil {
+		return fmt.Errorf("failed to parse Redis DSN: %w", pErr)
+	}
 
-	// establish connection to Redis server if needed
-	if cmd.options.pubSub.driver == pubSubDriverRedis || cmd.options.storage.driver == storageDriverRedis {
-		var opt, pErr = redis.ParseURL(cmd.options.redis.dsn)
-		if pErr != nil {
-			return fmt.Errorf("failed to parse Redis DSN: %w", pErr)
+	{ // disable maintenance notifications (https://github.com/tarampampam/webhook-tester/issues/713)
+		if opt.MaintNotificationsConfig == nil {
+			opt.MaintNotificationsConfig = new(maintnotifications.Config)
 		}
 
-		{ // disable maintenance notifications (https://github.com/tarampampam/webhook-tester/issues/713)
-			if opt.MaintNotificationsConfig == nil {
-				opt.MaintNotificationsConfig = new(maintnotifications.Config)
+		opt.MaintNotificationsConfig.Mode = maintnotifications.ModeDisabled
+	}
+
+	var rdc = redis.NewClient(opt)
+
+	redis.SetLogger(logger.NewRedisBridge(log.Named("redis")))
+
+	defer func() { _ = rdc.Close() }()
+
+	if err := rdc.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("failed to ping Redis server: %w", err)
+	}
+
+	// requests are always stored in Redis
+	var db storage.Storage = storage.NewRedis(rdc, cmd.options.storage.sessionTTL, uint32(cmd.options.storage.maxRequests))
+
+	// create the file storage (uploaded files are kept on the local filesystem) and verify it is writable
+	if err := verifyWritableDir(cmd.options.files.dir); err != nil {
+		return fmt.Errorf("files directory [%s]: %w", cmd.options.files.dir, err)
+	}
+
+	var fileStorage = files.NewLocal(cmd.options.files.dir)
+
+	// start the background janitor that removes files of sessions that no longer exist
+	go files.RunJanitor(ctx, fileStorage, time.Minute, func(ctx context.Context, sID string) (bool, error) {
+		if _, err := db.GetSession(ctx, sID); err != nil {
+			if errors.Is(err, storage.ErrSessionNotFound) {
+				return false, nil
 			}
 
-			opt.MaintNotificationsConfig.Mode = maintnotifications.ModeDisabled
+			return false, err
 		}
 
-		rdc = redis.NewClient(opt)
-
-		redis.SetLogger(logger.NewRedisBridge(log.Named("redis")))
-
-		defer func() { _ = rdc.Close() }()
-
-		if err := rdc.Ping(ctx).Err(); err != nil {
-			return fmt.Errorf("failed to ping Redis server: %w", err)
-		}
-	}
-
-	var db storage.Storage
-
-	// create the storage
-	switch cmd.options.storage.driver {
-	case storageDriverMemory:
-		var inMemory = storage.NewInMemory(cmd.options.storage.sessionTTL, uint32(cmd.options.storage.maxRequests)) //nolint:contextcheck,lll
-		defer func() { _ = inMemory.Close() }()
-		db = inMemory //nolint:wsl_v5
-	case storageDriverRedis:
-		db = storage.NewRedis(rdc, cmd.options.storage.sessionTTL, uint32(cmd.options.storage.maxRequests))
-	case storageDriverFS:
-		if stat, err := os.Stat(cmd.options.storage.fsDir); err != nil {
-			return fmt.Errorf("failed to get the storage directory [%s]: %w", cmd.options.storage.fsDir, err)
-		} else if !stat.IsDir() {
-			return fmt.Errorf("not a directory [%s]", cmd.options.storage.fsDir)
-		}
-
-		var fs = storage.NewFS( //nolint:contextcheck
-			cmd.options.storage.fsDir,
-			cmd.options.storage.sessionTTL,
-			uint32(cmd.options.storage.maxRequests),
-		)
-
-		defer func() { _ = fs.Close() }()
-
-		db = fs
-	default:
-		return fmt.Errorf("unknown storage driver [%s]", cmd.options.storage.driver)
-	}
+		return true, nil
+	})
 
 	var pubSub pubsub.PubSub[pubsub.RequestEvent]
 
@@ -501,6 +499,7 @@ func (cmd *command) Run(parentCtx context.Context, log *zap.Logger) error { //no
 		cmd.latestAppVersionGetter(),
 		&appSettings,
 		db,
+		fileStorage,
 		pubSub,
 		cmd.options.frontend.useLive,
 	)
@@ -520,7 +519,8 @@ func (cmd *command) Run(parentCtx context.Context, log *zap.Logger) error { //no
 		log.Info("HTTP server starting",
 			zap.String("address", cmd.options.addr),
 			zap.Uint16("port", cmd.options.http.tcpPort),
-			zap.String("storage", cmd.options.storage.driver),
+			zap.String("storage", "redis"),
+			zap.String("files-dir", cmd.options.files.dir),
 			zap.String("pubsub", cmd.options.pubSub.driver),
 			zap.String("open", fmt.Sprintf("http://%s:%d", func() string {
 				if addr := cmd.options.addr; addr == "0.0.0.0" || addr == "::" || strings.HasPrefix(addr, "127.") {

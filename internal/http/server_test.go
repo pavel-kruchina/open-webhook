@@ -1,20 +1,25 @@
 package http_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"gh.tarampamp.am/webhook-tester/v2/internal/config"
+	"gh.tarampamp.am/webhook-tester/v2/internal/files"
 	appHttp "gh.tarampamp.am/webhook-tester/v2/internal/http"
 	"gh.tarampamp.am/webhook-tester/v2/internal/pubsub"
 	"gh.tarampamp.am/webhook-tester/v2/internal/storage"
@@ -51,6 +56,7 @@ func TestServer_StartHTTP(t *testing.T) {
 		func(context.Context) (string, error) { return "v1.0.0", nil },
 		&config.AppSettings{},
 		db,
+		files.NewLocal(t.TempDir()),
 		pubsub.NewInMemory[pubsub.RequestEvent](),
 		false,
 	)
@@ -183,6 +189,7 @@ func TestServer_PublicURLRoot(t *testing.T) {
 		func(context.Context) (string, error) { return "v1.0.0", nil },
 		&config.AppSettings{PublicURLRoot: publicURLRoot},
 		db,
+		files.NewLocal(t.TempDir()),
 		pubsub.NewInMemory[pubsub.RequestEvent](),
 		false,
 	)
@@ -199,6 +206,102 @@ func TestServer_PublicURLRoot(t *testing.T) {
 		require.Equal(t, http.StatusOK, status)
 		require.Contains(t, headers.Get("Content-Type"), "application/json")
 		require.Contains(t, string(body), `"public_url_root":"https://example.com"`)
+	})
+}
+
+func TestServer_MultipartFilesUploadAndDownload(t *testing.T) {
+	t.Parallel()
+
+	var (
+		ctx       = context.Background()
+		log       = zap.NewNop()
+		srv       = appHttp.NewServer(ctx, log)
+		db        = storage.NewInMemory(time.Minute, 8)
+		fileStore = files.NewLocal(t.TempDir())
+	)
+
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	sID, err := db.NewSession(ctx, storage.Session{Code: http.StatusOK})
+	require.NoError(t, err)
+
+	srv.Register(
+		context.Background(),
+		log,
+		func(context.Context) error { return nil },
+		func(context.Context) (string, error) { return "v1.0.0", nil },
+		&config.AppSettings{SessionTTL: time.Minute},
+		db,
+		fileStore,
+		pubsub.NewInMemory[pubsub.RequestEvent](),
+		false,
+	)
+
+	var baseUrl, stop = startServer(t, ctx, srv)
+
+	t.Cleanup(stop)
+
+	const (
+		fileContent = "the quick brown fox\x00\x01\x02 binary payload"
+		fileName    = "report.bin"
+	)
+
+	// build and send a multipart/form-data request with a regular field and a file
+	var (
+		buf = new(bytes.Buffer)
+		mw  = multipart.NewWriter(buf)
+	)
+
+	require.NoError(t, mw.WriteField("comment", "hello"))
+
+	part, pErr := mw.CreateFormFile("attachment", fileName)
+	require.NoError(t, pErr)
+	_, _ = part.Write([]byte(fileContent))
+	require.NoError(t, mw.Close())
+
+	uploadResp, uErr := http.Post(baseUrl+"/"+sID, mw.FormDataContentType(), buf) //nolint:noctx
+	require.NoError(t, uErr)
+	require.NoError(t, uploadResp.Body.Close())
+	require.Equal(t, http.StatusOK, uploadResp.StatusCode)
+
+	// fetch the captured request list and extract the stored file metadata
+	listStatus, listBody, _ := sendRequest(t, http.MethodGet, baseUrl+"/api/session/"+sID+"/requests")
+	require.Equal(t, http.StatusOK, listStatus)
+
+	var list []struct {
+		UUID                 string `json:"uuid"`
+		RequestPayloadBase64 string `json:"request_payload_base64"`
+		Files                []struct {
+			UUID        string `json:"uuid"`
+			Name        string `json:"name"`
+			ContentType string `json:"content_type"`
+			Size        int64  `json:"size"`
+		} `json:"files"`
+	}
+
+	require.NoError(t, json.Unmarshal(listBody, &list))
+	require.Len(t, list, 1)
+	require.Len(t, list[0].Files, 1, "the uploaded file must be extracted as metadata")
+
+	var file = list[0].Files[0]
+	require.Equal(t, fileName, file.Name)
+	require.Equal(t, int64(len(fileContent)), file.Size)
+	require.NotEmpty(t, file.UUID)
+
+	t.Run("download the stored file", func(t *testing.T) {
+		status, body, headers := sendRequest(t, http.MethodGet, baseUrl+"/"+sID+"/files/"+file.UUID)
+
+		require.Equal(t, http.StatusOK, status)
+		require.Equal(t, fileContent, string(body), "downloaded content must match the upload")
+		require.Contains(t, headers.Get("Content-Disposition"), fileName)
+		require.Equal(t, "nosniff", headers.Get("X-Content-Type-Options"))
+	})
+
+	t.Run("unknown file id is not served (falls through to capture)", func(t *testing.T) {
+		status, _, headers := sendRequest(t, http.MethodGet, baseUrl+"/"+sID+"/files/"+uuid.NewString())
+
+		require.Equal(t, http.StatusOK, status) // captured as a normal webhook request
+		require.Empty(t, headers.Get("Content-Disposition"), "must not serve a file for an unknown id")
 	})
 }
 

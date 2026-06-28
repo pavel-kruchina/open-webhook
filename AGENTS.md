@@ -14,9 +14,10 @@ If rules conflict, follow the highest priority source.
 
 ## Project Overview
 
-**webhook-tester** is a web application for testing and debugging webhooks. It consists of:
+**open-webhook** (a fork of [`tarampampam/webhook-tester`](https://github.com/tarampampam/webhook-tester)) is a web
+application for testing and debugging webhooks. It consists of:
 
-- **Go backend** (`cmd/`, `internal/`) - HTTP API server, storage (in-memory/Redis/fs), WebSocket, ngrok tunnel support
+- **Go backend** (`cmd/`, `internal/`) - HTTP API server, request storage (Redis), uploaded-file storage (local filesystem), WebSocket, ngrok tunnel support
 - **TypeScript/React frontend** (`web/src/`) - Vite-based SPA (React + Mantine UI + openapi-fetch)
 - **OpenAPI spec** (`api/openapi.yml`) - source of truth for the HTTP API contract
 
@@ -33,7 +34,8 @@ internal/
     middleware/            - HTTP middleware
     openapi/               - generated server stubs (do not edit *.gen.*)
     server.go              - HTTP server wiring
-  storage/                 - storage.go defines the interface; inmemory.go / redis.go / fs.go implement it
+  storage/                 - storage.go defines the request/session interface; redis.go is the only runtime driver (inmemory.go is kept for tests)
+  files/                   - local filesystem storage for files extracted from multipart/form-data bodies (+ orphan janitor)
   pubsub/                  - pub/sub interface + memory/redis implementations (WebSocket notifications)
   tunnel/                  - ngrok tunnel integration
   logger/                  - zap logger setup
@@ -100,7 +102,7 @@ Ask before:
 
 ## Project-Specific Conventions
 
-- Storage backends live in `internal/storage/` - in-memory, Redis and fs implementations share a common interface defined in `storage.go`.
+- Requests/sessions are always stored in Redis (`internal/storage/redis.go`); the `storage.go` interface is also implemented by `inmemory.go`, which is retained only as a test double. Uploaded files are stored on the local filesystem via `internal/files` and downloaded through the app at `/{session_uuid}/files/{file_uuid}`.
 - HTTP handlers are generated from the OpenAPI spec; do not add routes outside the spec without discussion.
 - Logging uses `go.uber.org/zap`; follow existing patterns in `internal/logger/` and handler files.
 - Frontend state management and component patterns follow what exists in `web/src/` - read existing components before writing new ones.

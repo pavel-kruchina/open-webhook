@@ -17,7 +17,7 @@ const controls = {
   },
   // response headers
   head: {
-    def: 'Content-Type: application/json\nServer: WebhookTester',
+    def: 'Content-Type: application/json\nServer: open-webhook',
     limits: { maxCount: 10, minNameLen: 1, maxNameLen: 40, maxValueLen: 2048 },
     key: UsedStorageKeys.NewSessionHeadersList,
     area: 'session' satisfies StorageArea as StorageArea,
@@ -204,7 +204,7 @@ export const NewSessionModal: React.FC<{
         my="sm"
         label="Response headers"
         description={`The list of headers to include in the response (one per line, max ${controls.head.limits.maxCount})`}
-        placeholder={'Content-Type: application/json\nServer: WebhookTester\nX-Request-Id: 3C27:3A7ABF:250756C'}
+        placeholder={'Content-Type: application/json\nServer: open-webhook\nX-Request-Id: 3C27:3A7ABF:250756C'}
         leftSection={<IconHeading />}
         styles={{ input: { fontFamily: 'monospace', fontSize: '0.9em' } }}
         minRows={2}

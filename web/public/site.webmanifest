@@ -1,6 +1,6 @@
 {
-  "name": "WebHook Tester",
-  "short_name": "WebHook Tester",
+  "name": "open-webhook",
+  "short_name": "open-webhook",
   "description": "Allows you to easily test webhooks and other types of HTTP requests",
   "id": "app",
   "start_url": "/",

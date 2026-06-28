@@ -11,6 +11,14 @@ export type Session = {
   responseBody: Uint8Array
 }
 
+/** A file extracted from a captured multipart/form-data request body (downloadable via the app). */
+export type RequestFile = {
+  uuid: string
+  name: string
+  contentType: string
+  size: number
+}
+
 export type Request = {
   rID: string
   clientAddress: string // IPv4 or IPv6
@@ -19,6 +27,7 @@ export type Request = {
   url: URL
   get payload(): Promise<Uint8Array | null> | null // the payload is lazy-loaded to avoid memory overuse
   capturedAt: Date
+  files: Array<RequestFile> // files extracted from a multipart/form-data body (empty for other requests)
 }
 
 export type SessionEvents = {
@@ -203,6 +212,7 @@ export const DataProvider: React.FC<{
                     payload: null, // server does not send the payload
                     capturedAt: req.capturedAt,
                     headers: [...req.headers],
+                    files: [], // the event does not carry files; they are loaded with the full request
                   })
 
                   // append the new request in front of the list (update the state)
@@ -215,6 +225,7 @@ export const DataProvider: React.FC<{
                       headers: [...req.headers],
                       url: req.url,
                       capturedAt: req.capturedAt,
+                      files: [],
                     }),
                     ...prev,
                   ])
@@ -228,6 +239,7 @@ export const DataProvider: React.FC<{
                       headers: [...req.headers],
                       url: req.url,
                       capturedAt: req.capturedAt,
+                      files: [],
                     })
                   )
                 }
@@ -252,6 +264,7 @@ export const DataProvider: React.FC<{
                       headers: [...req.headers],
                       url: req.url,
                       capturedAt: req.capturedAt,
+                      files: [],
                     })
                   )
 
@@ -361,6 +374,7 @@ export const DataProvider: React.FC<{
               headers: [...r.headers],
               url: new URL(r.url),
               capturedAt: r.capturedAt,
+              files: r.files ? [...r.files] : [],
             })
           )
           .sort(requestsSorter)
@@ -382,6 +396,7 @@ export const DataProvider: React.FC<{
                 headers: [...r.headers],
                 url: r.url,
                 capturedAt: r.capturedAt,
+                files: [...r.files],
               })
             )
             .sort(requestsSorter)
@@ -398,6 +413,7 @@ export const DataProvider: React.FC<{
             capturedAt: r.capturedAt,
             headers: [...r.headers],
             payload: r.requestPayload,
+            files: [...r.files],
           }))
         )
 
@@ -564,6 +580,7 @@ export const DataProvider: React.FC<{
             headers: [...req.headers],
             url: new URL(req.url),
             capturedAt: req.capturedAt,
+            files: req.files ? [...req.files] : [],
             get payload() {
               return Promise.resolve(req.payload)
             },
@@ -590,6 +607,7 @@ export const DataProvider: React.FC<{
                     headers: [...serverReq.headers],
                     url: new URL(serverReq.url),
                     capturedAt: serverReq.capturedAt,
+                    files: [...serverReq.files],
                     get payload() {
                       return Promise.resolve(serverReq.requestPayload)
                     },
@@ -606,6 +624,7 @@ export const DataProvider: React.FC<{
               capturedAt: serverReq.capturedAt,
               headers: [...serverReq.headers],
               payload: serverReq.requestPayload,
+              files: [...serverReq.files],
             })
           } catch (err) {
             // if the request is not found on the server
@@ -636,6 +655,7 @@ export const DataProvider: React.FC<{
               headers: [...serverReq.headers],
               url: serverReq.url,
               capturedAt: serverReq.capturedAt,
+              files: [...serverReq.files],
               get payload() {
                 return Promise.resolve(serverReq.requestPayload)
               },
@@ -651,6 +671,7 @@ export const DataProvider: React.FC<{
             capturedAt: serverReq.capturedAt,
             headers: [...serverReq.headers],
             payload: serverReq.requestPayload,
+            files: [...serverReq.files],
           })
         }
       }

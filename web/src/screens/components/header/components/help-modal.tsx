@@ -21,13 +21,13 @@ export const HelpModal: React.FC<{
       }}
       title={
         <Text size="lg" fw={700}>
-          What is Webhook Tester?
+          What is open-webhook?
         </Text>
       }
       centered
     >
       <Text my="md">
-        Webhook Tester lets you easily test webhooks and other HTTP requests. Here&apos;s your unique URL:
+        open-webhook lets you easily test webhooks and other HTTP requests. Here&apos;s your unique URL:
       </Text>
 
       <CodeHighlight code={webHookUrl ? webHookUrl.toString() : '...'} language="bash" w="100%" my="md" />

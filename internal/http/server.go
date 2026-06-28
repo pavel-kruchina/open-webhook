@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"gh.tarampamp.am/webhook-tester/v2/internal/config"
+	"gh.tarampamp.am/webhook-tester/v2/internal/files"
 	"gh.tarampamp.am/webhook-tester/v2/internal/http/frontend"
 	"gh.tarampamp.am/webhook-tester/v2/internal/http/middleware/logreq"
 	"gh.tarampamp.am/webhook-tester/v2/internal/http/middleware/webhook"
@@ -65,6 +66,7 @@ func (s *Server) Register(
 	lastAppVer func(context.Context) (string, error),
 	cfg *config.AppSettings,
 	db storage.Storage,
+	fileStorage files.Storage,
 	pubSub pubsub.PubSub[pubsub.RequestEvent],
 	useLiveFrontend bool,
 ) *Server {
@@ -94,7 +96,7 @@ func (s *Server) Register(
 		// issue: https://github.com/tarampampam/webhook-tester/issues/575
 		return r.URL.Path == openapi.RouteLivenessProbe || r.URL.Path == openapi.RouteReadinessProbe
 	})( // logger middleware
-		webhook.New(ctx, log.Named("webhook"), db, pubSub, cfg)( // webhook capture as a middleware
+		webhook.New(ctx, log.Named("webhook"), db, fileStorage, pubSub, cfg)( // webhook capture as a middleware
 			handler,
 		),
 	)

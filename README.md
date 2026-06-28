@@ -1,13 +1,9 @@
-<p align="center">
-  <a href="https://github.com/tarampampam/webhook-tester#readme">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://socialify.git.ci/tarampampam/webhook-tester/image?description=1&font=Raleway&forks=1&issues=1&logo=https%3A%2F%2Fgithub.com%2Fuser-attachments%2Fassets%2Fe2e659dc-7fb1-4ac2-ad3c-883899f5fc38&owner=1&pulls=1&pattern=Solid&stargazers=1&theme=Dark">
-      <img align="center" src="https://socialify.git.ci/tarampampam/webhook-tester/image?description=1&font=Raleway&forks=1&issues=1&logo=https%3A%2F%2Fgithub.com%2Fuser-attachments%2Fassets%2Fe2e659dc-7fb1-4ac2-ad3c-883899f5fc38&owner=1&pulls=1&pattern=Solid&stargazers=1&theme=Light">
-    </picture>
-  </a>
-</p>
+# open-webhook
 
-# WebHook Tester
+> [!NOTE]
+> **open-webhook** is a fork of [`tarampampam/webhook-tester`](https://github.com/tarampampam/webhook-tester) by
+> Paramtamtam. All credit for the original application goes to the upstream author. This fork stores captured
+> requests in Redis and adds storage & download of files uploaded via `multipart/form-data` (see below).
 
 This application allows you to test and debug webhooks and HTTP requests using unique, randomly generated URLs. You
 can customize the response code, `Content-Type` HTTP header, response content, and even set a delay for responses.
@@ -19,17 +15,13 @@ Consider it a free and self-hosted alternative to [webhook.site](https://github.
   <img src="https://github.com/user-attachments/assets/26e56d78-8a10-4883-9052-d18047206fda" alt="screencast" />
 </p>
 
-> [!TIP]
-> The demo is available at [wh.tarampamp.am](https://wh.tarampamp.am/). Please note that it is quite limited,
-> does not persist data, and may be unavailable sometimes, but feel free to try it.
-
 Built with Go for high performance, this application includes a lightweight UI (written in `ReactJS`) that’s compiled
 into the binary, so no additional assets are required. WebSocket support provides real-time webhook notifications in
 the UI - no need for third-party solutions like `pusher.com`!
 
 ### 🔥 Features list
 
-- Standalone operation with in-memory storage/pubsub - no third-party dependencies needed
+- Requests are stored in Redis; uploaded files (from `multipart/form-data`) are kept on the local filesystem
 - Fully customizable response code, headers, and body for webhooks
 - Option to expose your locally running instance to the global internet (via tunneling)
 - Fast, built-in UI based on `ReactJS`
@@ -38,6 +30,7 @@ the UI - no need for third-party solutions like `pusher.com`!
 - Well-tested, documented source code
 - CLI health check sub-command included
 - Binary view of recorded requests in UI
+- Uploaded files from `multipart/form-data` requests are stored and downloadable through the UI
 - Supports JSON and human-readable logging formats
 - Liveness probes (`/healthz` endpoint)
 - Customizable webhook responses
@@ -47,13 +40,31 @@ the UI - no need for third-party solutions like `pusher.com`!
 
 ### 🗃 Storage
 
-The app supports 3 storage drivers: **memory**, **Redis** and **fs** (configured with the `--storage-driver` flag).
+Captured requests (and sessions) are **always stored in Redis** — set the connection string with the `--redis-dsn`
+flag (or the `REDIS_DSN` environment variable). Redis is required to start the app, and is also what allows running
+multiple instances behind a load balancer.
 
-- **Memory** driver: Ideal for local debugging when persistent storage isn’t needed, as recorded requests are cleared
-  upon app shutdown
-- **Redis** driver: Retains data across app restarts, suitable for environments where data persistence is required.
-  Redis is also necessary when running multiple instances behind a load balancer
-- **FS** driver: Keep all the data in the local filesystem, useful when you need to store data between app restarts
+> [!NOTE]
+> Earlier versions offered `memory` and `fs` storage drivers selectable via `--storage-driver`. These have been
+> removed: requests are now always stored in Redis, and the `--storage-driver` / `--fs-storage-dir` flags no longer
+> exist.
+
+### 📎 File uploads
+
+When a captured request has a `multipart/form-data` body, each uploaded file is extracted and stored on the local
+filesystem (not in Redis) under the directory given by the **required** `--files-dir` flag (or the `FILES_DIR`
+environment variable). Only the file metadata (name, content type, size, and a random UUID) is kept alongside the
+request; the request body itself stores the form structure with the file contents replaced by a short placeholder.
+
+Files are never served directly from disk — they are downloaded **through the app** (which leaves room for adding
+throttling later) at an unguessable URL:
+
+```
+{webhook-url}/{session_uuid}/files/{file_uuid}
+```
+
+Both UUIDs must be known to download a file, so they cannot be enumerated by brute force. Files are removed together
+with their session (when it is deleted or expires); a background janitor reclaims the disk space of expired sessions.
 
 ### 📢 Pub/Sub
 
@@ -118,15 +129,25 @@ To install it on Kubernetes (K8s), please use the Helm chart from [ArtifactHUB][
 
 ## ⚙ Usage
 
-The easiest way to run the app is by using the Docker image:
+The app requires a **Redis** server (for storing requests) and a writable **files directory** (for uploaded files),
+so the easiest way to run it is with the Docker image alongside Redis:
 
 ```shell
-docker run --rm -t -p "8080:8080/tcp" ghcr.io/tarampampam/webhook-tester:2
+# start a Redis server
+docker run -d --name wh-redis redis:8-alpine
+
+# start the app: link Redis, mount a files directory, and point --files-dir at it
+docker run --rm -t -p "8080:8080/tcp" \
+  --link wh-redis \
+  -v "$(pwd)/wh-files:/data/files" \
+  -e REDIS_DSN="redis://wh-redis:6379/0" \
+  ghcr.io/tarampampam/webhook-tester:2 start --files-dir /data/files
 ```
 
 > [!NOTE]
-> This command starts the app with the default configuration on port `8080` (the first port in the `-p` argument is
-> the host port, and the second is the application port inside the container).
+> This starts the app on port `8080` (the first port in the `-p` argument is the host port, and the second is the
+> application port inside the container). `--files-dir` is required and `REDIS_DSN` must point to a reachable Redis
+> server.
 
 Next, open your browser at [`localhost:8080`](http://localhost:8080) to begin testing your webhooks. To stop the app, press `Ctrl+C` in
 the terminal where it's running.
@@ -140,7 +161,7 @@ For custom configuration options, refer to the CLI help below or execute the app
 <!-- Documentation inside this block generated by github.com/urfave/cli-docs/v3; DO NOT EDIT -->
 ## CLI interface
 
-webhook tester.
+open-webhook.
 
 Usage:
 
@@ -174,10 +195,9 @@ The following flags are supported:
 | `--read-timeout="…"`          | maximum duration for reading the entire request, including the body (zero = no timeout)                                                                      | duration |            `1m0s`            |     `HTTP_READ_TIMEOUT`      |
 | `--write-timeout="…"`         | maximum duration before timing out writes of the response (zero = no timeout)                                                                                | duration |            `1m0s`            |     `HTTP_WRITE_TIMEOUT`     |
 | `--idle-timeout="…"`          | maximum amount of time to wait for the next request (keep-alive, zero = no timeout)                                                                          | duration |            `1m0s`            |     `HTTP_IDLE_TIMEOUT`      |
-| `--storage-driver="…"`        | storage driver (memory/redis/fs)                                                                                                                             | string   |          `"memory"`          |       `STORAGE_DRIVER`       |
 | `--session-ttl="…"`           | session TTL (time-to-live, lifetime)                                                                                                                         | duration |          `168h0m0s`          |        `SESSION_TTL`         |
 | `--max-requests="…"`          | maximal number of requests to store in the storage (zero means unlimited)                                                                                    | uint     |            `128`             |        `MAX_REQUESTS`        |
-| `--fs-storage-dir="…"`        | path to the directory for local fs storage (directory must exist)                                                                                            | string   |                              |       `FS_STORAGE_DIR`       |
+| `--files-dir="…"`             | path to the directory for storing files uploaded via multipart/form-data (must exist and be writable)                                                        | string   |                              |         `FILES_DIR`          |
 | `--max-request-body-size="…"` | maximal webhook request body size (in bytes), zero means unlimited                                                                                           | uint     |             `0`              |   `MAX_REQUEST_BODY_SIZE`    |
 | `--auto-create-sessions`      | automatically create sessions for incoming requests                                                                                                          | bool     |           `false`            |    `AUTO_CREATE_SESSIONS`    |
 | `--pubsub-driver="…"`         | pub/sub driver (memory/redis)                                                                                                                                | string   |          `"memory"`          |       `PUBSUB_DRIVER`        |
@@ -206,21 +226,10 @@ The following flags are supported:
 
 <!--/GENERATED:CLI_DOCS-->
 
-## 🧠 A note on AI-assisted development
+## Credits
 
-AI tools are great assistants - they can autocomplete, review, summarize, and help you move faster. But they’re not a
-substitute for understanding what's going on. If you're using AI to contribute here, please make sure you actually
-read, understand, and stand behind the changes you’re proposing.
-
-I personally write my code myself, and I encourage others to do the same. Not because AI is "bad", but because blindly
-trusting generated code tends to produce... let's say creative results.
-
-And honestly, I'm still waiting for the day "AI-free software" becomes a trend - like organic food, but for code 😄 
-Until then: trust, but verify.
-
-## 🤖 AI Agent Instructions
-
-See [AGENTS.md](AGENTS.md) for detailed guidelines for AI agents working with this repository.
+**open-webhook** is a fork of [`tarampampam/webhook-tester`](https://github.com/tarampampam/webhook-tester).
+The original application was created and is maintained by Paramtamtam — please star and support the upstream project.
 
 ## License
 

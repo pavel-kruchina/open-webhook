@@ -9,6 +9,7 @@ export type Request = {
   url: string
   payload: Uint8Array | null
   capturedAt: Date
+  files?: Array<{ uuid: string; name: string; contentType: string; size: number }>
 }
 
 export type RequestsTable = Table<Request, string>
