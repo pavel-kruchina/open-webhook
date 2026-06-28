@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { pathTo, RouteIDs } from '~/routing'
 import { type SessionEvents, useBrowserNotifications, useData, useSettings } from '~/shared'
-import { RequestDetails, SessionDetails } from './components'
+import { RequestDetails, SessionDetails, WebhookUrlBar } from './components'
 
 export function SessionAndRequestScreen(): React.JSX.Element {
   const navigate = useNavigate()
@@ -190,7 +190,12 @@ export function SessionAndRequestScreen(): React.JSX.Element {
   }, [sID, rID, listeners, navigate, switchToRequest, switchToSession])
 
   return (
-    (!!request && <RequestDetails loading={requestLoading} />) || (
+    (!!request && (
+      <>
+        <WebhookUrlBar />
+        <RequestDetails loading={requestLoading} />
+      </>
+    )) || (
       <>
         <SessionDetails loading={sessionLoading} />
         <Blockquote my="lg" color="blue" icon={<IconInfoCircle />}>

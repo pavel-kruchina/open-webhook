@@ -14,8 +14,13 @@ export default function DefaultLayout({ api }: { api: Client }): React.JSX.Eleme
   const [scroll, scrollTo] = useWindowScroll()
   const [navBarIsOpened, navBarHandlers] = useDisclosure()
   const [currentVersion, setCurrentVersion] = useState<SemVer | null>(null)
-  const { updateSettings } = useSettings()
+  const { updateSettings, uiScale } = useSettings()
   const { session } = useData()
+
+  // apply the interface scale (font/spacing) by overriding Mantine's scale CSS variable
+  useEffect(() => {
+    document.documentElement.style.setProperty('--mantine-scale', String(uiScale || 1))
+  }, [uiScale])
 
   // load current version & settings on mount
   useEffect(() => {
