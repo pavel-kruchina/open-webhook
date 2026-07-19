@@ -1,5 +1,13 @@
 # open-webhook
 
+> [!IMPORTANT]
+> ### 🤖 Using an AI coding agent (Claude Code or Codex)? &nbsp;→&nbsp; type **`/open-webhook`**
+> Open this repo in your agent and run **`/open-webhook`** (Codex: `$open-webhook`). It asks whether
+> you want to **test local apps** or **capture requests from the internet**, then installs, runs, and
+> — if needed — deploys the service for you, no manual steps.
+> See [🤖 AI agent skills](#-ai-agent-skills) for one-time setup (Claude Code auto-loads them; Codex
+> needs a one-line copy).
+
 > [!NOTE]
 > **open-webhook** is an **AI-focused fork** of
 > [`tarampampam/webhook-tester`](https://github.com/tarampampam/webhook-tester) by Paramtamtam.
@@ -64,6 +72,32 @@ This fork sharpens webhook-tester for AI and automation development:
   horizontally scaled deployment
 - **Keep sensitive payloads in-house** — self-host so prompts, tool arguments, and user data never leave your
   infrastructure
+
+## 🤖 AI agent skills
+
+This repo ships ready-made **[Agent Skills](https://agentskills.io)** so an AI coding agent can set up
+and use open-webhook for you. They live in [`.claude/skills/`](.claude/skills):
+
+| Skill | What it does |
+|-------|--------------|
+| **`/open-webhook`** | **Start here.** Asks whether you want to test local apps or capture requests from the internet, then wires up the rest. |
+| `/open-webhook-serve` | Runs the service locally, or deploys it to your own SSH server behind your domain and keeps it running across reboots. Written for non-technical users. |
+| `/open-webhook-api` | Uses a running instance from automations via its JSON API — get a webhook URL, read captured requests, download files. |
+
+**Claude Code** — open this repo and type `/open-webhook` (project skills load automatically; accept
+the workspace-trust prompt on first use). Docs: <https://code.claude.com/docs/en/skills>.
+
+**Codex** — Codex reads skills from `.agents/skills/`. Mirror them once, then use `$open-webhook`:
+
+```shell
+mkdir -p .agents/skills && cp -r .claude/skills/* .agents/skills/
+```
+
+Docs: <https://developers.openai.com/codex/skills>.
+
+> [!TIP]
+> Want the skills available in **every** project, not just this repo? Copy the folders into
+> `~/.claude/skills/` (Claude Code) or `~/.agents/skills/` (Codex).
 
 ### 🔥 Features list
 
