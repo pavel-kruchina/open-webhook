@@ -16,62 +16,51 @@
 > adds Redis-backed request/session persistence and storage & download of files uploaded via `multipart/form-data`
 > (see below).
 
-**open-webhook** is a self-hosted webhook and HTTP-request inspector, built primarily for developers working on
-**AI agents, LLM applications, and AI-powered automation**. It hands you unique, randomly generated URLs that capture
-every incoming request in full — method, headers, body, and uploaded files — so you can see exactly what your agents
-and integrations send and receive.
+**open-webhook** is an **agent-native, self-hosted webhook inspector** with Redis persistence and first-class
+multipart attachment support. It gives you unique, unguessable URLs that capture every incoming HTTP request in full
+— method, headers, body, and uploaded files — and lets you read them back over a JSON API, so an AI agent can inspect
+exactly what it (or a third party) sent without opening a browser.
 
-It remains a general-purpose webhook inspector, but its main focus is debugging the HTTP traffic that AI systems rely
-on:
+It's a general-purpose webhook inspector, focused on the traffic AI systems depend on:
 
-- **AI-agent tool calls** — inspect the outbound calls your agents make to tools and external APIs
-- **Callbacks & automation triggers** — capture asynchronous callbacks fired by queues, jobs, and pipelines
+- **AI-agent tool calls** — see the outbound calls your agents make to tools and external APIs
+- **Callbacks & automation triggers** — capture asynchronous callbacks from queues, jobs, and pipelines
 - **Provider webhooks** — verify events delivered by third-party and model providers
-- **Agent ↔ service HTTP** — observe the raw communication between agents and the external services they orchestrate
+- **Agent ↔ service HTTP** — observe the raw communication between agents and the services they orchestrate
 
-Because you can fully customize the response **code, headers, body, and delay**, a captured URL can also **stand in
-for an external tool or API** while you build and test an agent — simulating success, errors, or slow responses on
-demand.
+Because you can customize the response **code, headers, body, and delay**, a captured URL can also **stand in for an
+external tool or API** while you build an agent — simulating success, errors, or slow responses on demand.
 
-This fork adds capabilities that matter for AI work:
-
-- **Redis-backed request and session persistence** — captured payloads survive restarts and can be shared across
-  multiple instances behind a load balancer
-- **Storage and download of files received via `multipart/form-data`** — useful for **multimodal workflows** that
-  move documents, images, audio, and other attachments between agents and services
-- **Self-hosting** — helps keep potentially sensitive AI payloads (prompts, tool arguments, user data) inside your
-  own infrastructure
+**What this fork adds over [upstream](https://github.com/tarampampam/webhook-tester):** Redis-backed persistence
+(requests and sessions survive restarts and scale across instances), and storage + download of files uploaded via
+`multipart/form-data` — so multimodal payloads (documents, images, audio) are captured, not discarded. Self-host it
+to keep sensitive payloads inside your own infrastructure.
 
 > [!NOTE]
 > open-webhook is a webhook **inspection and debugging** tool — **not** an AI model server or inference platform. It
 > does not run, host, or proxy language models.
 
-Consider it a free and self-hosted alternative to [webhook.site](https://github.com/fredsted/webhook.site),
-[requestinspector.com](https://requestinspector.com/), and similar services.
+Consider it a self-hosted alternative to [webhook.site](https://github.com/fredsted/webhook.site),
+[requestinspector.com](https://requestinspector.com/), and similar services. Built in Go with an embedded ReactJS UI
+(compiled into the binary) and built-in WebSocket push for real-time updates.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/26e56d78-8a10-4883-9052-d18047206fda" alt="screencast" />
 </p>
 
-Built with Go for high performance, this application includes a lightweight UI (written in `ReactJS`) that’s compiled
-into the binary, so no additional assets are required. WebSocket support provides real-time webhook notifications in
-the UI - no need for third-party solutions like `pusher.com`!
+## How it works — with an AI agent
 
-## Why this fork?
+The fastest path is to let a coding agent (Claude Code / Codex) drive it end to end:
 
-This fork sharpens webhook-tester for AI and automation development:
+1. Run **`/open-webhook`**.
+2. Choose **local**, **public**, or **an existing deployment**.
+3. The agent starts or connects to the service (Redis + app, HTTPS if public).
+4. It hands you a **webhook URL**.
+5. Trigger the external webhook — point a provider at the URL, or call it yourself.
+6. The agent inspects the captured request and downloads any attachments, over the JSON API.
 
-- **Debug AI-agent tool calls** — capture exactly what an agent sent when a tool call misbehaves, then iterate
-- **Simulate external tools & APIs** — custom status codes, headers, bodies, and delays let a webhook URL impersonate
-  a real service (including error and timeout cases) while you build an agent
-- **Inspect provider & model-provider webhooks** — confirm the shape and content of events delivered by third parties
-- **Trace automation triggers & callbacks** — see asynchronous callbacks from queues, cron jobs, and CI/CD pipelines
-- **Handle multimodal attachments** — persist and download files posted via `multipart/form-data` (documents, images,
-  audio) for workflows that pass binary payloads around
-- **Persist captured traffic** — Redis-backed storage keeps requests and sessions across restarts and across a
-  horizontally scaled deployment
-- **Keep sensitive payloads in-house** — self-host so prompts, tool arguments, and user data never leave your
-  infrastructure
+More than a throwaway request bin: captures **persist** in Redis, uploaded **files are stored and downloadable**, and
+the whole flow is **API- and agent-driven**.
 
 ## 🤖 AI agent skills
 
@@ -143,8 +132,17 @@ throttling later) at an unguessable URL:
 {webhook-url}/{session_uuid}/files/{file_uuid}
 ```
 
-Both UUIDs must be known to download a file, so they cannot be enumerated by brute force. Files are removed together
-with their session (when it is deleted or expires); a background janitor reclaims the disk space of expired sessions.
+Files are removed together with their session (when it is deleted or expires); a background janitor reclaims the disk
+space of expired sessions. There is no independent per-file expiry.
+
+> [!IMPORTANT]
+> **Session and attachment URLs are capability URLs, not authentication.** Their unguessable UUIDs make practical
+> enumeration infeasible, but that is *not* access control — **anyone who obtains a URL can access the associated
+> request or file**, so treat these URLs as secrets. They leak easily: through server and proxy logs, browser
+> history, screenshots, analytics, chat messages, and issue trackers. For anything exposed to the public internet,
+> put the management UI and API (`/`, `/api/*`, `/docs`) behind authentication — the `/open-webhook-serve` skill and
+> [`deployments/caddy/Caddyfile.public.example`](deployments/caddy/Caddyfile.public.example) do this with Caddy
+> Basic Auth while keeping the capture URLs public for webhook providers.
 
 ### 📢 Pub/Sub
 

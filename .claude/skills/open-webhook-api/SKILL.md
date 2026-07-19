@@ -22,6 +22,12 @@ BASE=<instance base url>   # e.g. https://hooks.example.com or http://localhost:
 - Interactive docs (Swagger UI): `{BASE}/docs`
 - Full machine-readable spec (fetch when you need an endpoint not covered here): `{BASE}/openapi.json`
 
+> **Public deployments are protected.** On a public instance set up via `/open-webhook-serve`, the
+> management API (`/api/*`), the UI, and `/docs` sit behind **Basic Auth**, while the capture URL
+> `POST /{sid}` and file downloads `/{sid}/files/{fid}` stay public. So add `-u "$USER:$PASS"` to the
+> `/api/*` `curl` calls below (creating sessions, listing/reading requests). The capture and
+> file-download calls need no credentials. Local instances usually have no auth.
+
 ## Concepts
 
 - A **session** = one webhook endpoint, identified by a UUID. Its capture URL is `{BASE}/{session_uuid}`.
