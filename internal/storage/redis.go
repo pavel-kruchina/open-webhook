@@ -219,10 +219,32 @@ func (s *Redis) NewRequest(ctx context.Context, sID string, r Request) (rID stri
 		return "", mErr
 	}
 
+	// determine the lifetime to apply to the request data and the requests index. the session's TTL is
+	// managed independently (extended by AddSessionTTL on every incoming request), so we align both the
+	// request data key and the index zset with the session's *current* remaining lifetime. this keeps the
+	// three keys in lockstep and prevents two issues:
+	//   - the index zset being created by ZAdd without any expiry (it would otherwise outlive the session
+	//     forever - AddSessionTTL only expires it when it already exists, which is never the case for the
+	//     first request of a session);
+	//   - the request (and its uploaded files' metadata) expiring before the session, which would strand
+	//     the files on disk and hide the request from the UI.
+	keyTTL, ttlErr := s.client.PTTL(ctx, s.sessionKey(sID)).Result()
+	if ttlErr != nil {
+		return "", ttlErr
+	}
+
+	switch {
+	case keyTTL == -2: //nolint:mnd // the session key no longer exists (raced with expiry/deletion)
+		return "", ErrSessionNotFound
+	case keyTTL <= 0: // -1 (no associated expiry) or an unexpectedly tiny value - fall back to the configured TTL
+		keyTTL = s.sessionTTL
+	}
+
 	// save the request data
 	if _, err := s.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.ZAdd(ctx, s.requestsKey(sID), redis.Z{Score: float64(now.UnixMilli()), Member: rID})
-		pipe.Set(ctx, s.requestKey(sID, rID), data, s.sessionTTL)
+		pipe.Set(ctx, s.requestKey(sID, rID), data, keyTTL)
+		pipe.PExpire(ctx, s.requestsKey(sID), keyTTL) // ensure the index inherits the session lifetime
 
 		return nil
 	}); err != nil {
