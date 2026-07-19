@@ -1,12 +1,42 @@
 # open-webhook
 
 > [!NOTE]
-> **open-webhook** is a fork of [`tarampampam/webhook-tester`](https://github.com/tarampampam/webhook-tester) by
-> Paramtamtam. All credit for the original application goes to the upstream author. This fork stores captured
-> requests in Redis and adds storage & download of files uploaded via `multipart/form-data` (see below).
+> **open-webhook** is an **AI-focused fork** of
+> [`tarampampam/webhook-tester`](https://github.com/tarampampam/webhook-tester) by Paramtamtam.
+> **All credit for the original application goes to the upstream author** — please star and support the
+> [upstream project](https://github.com/tarampampam/webhook-tester). This fork keeps the original functionality and
+> adds Redis-backed request/session persistence and storage & download of files uploaded via `multipart/form-data`
+> (see below).
 
-This application allows you to test and debug webhooks and HTTP requests using unique, randomly generated URLs. You
-can customize the response code, `Content-Type` HTTP header, response content, and even set a delay for responses.
+**open-webhook** is a self-hosted webhook and HTTP-request inspector, built primarily for developers working on
+**AI agents, LLM applications, and AI-powered automation**. It hands you unique, randomly generated URLs that capture
+every incoming request in full — method, headers, body, and uploaded files — so you can see exactly what your agents
+and integrations send and receive.
+
+It remains a general-purpose webhook inspector, but its main focus is debugging the HTTP traffic that AI systems rely
+on:
+
+- **AI-agent tool calls** — inspect the outbound calls your agents make to tools and external APIs
+- **Callbacks & automation triggers** — capture asynchronous callbacks fired by queues, jobs, and pipelines
+- **Provider webhooks** — verify events delivered by third-party and model providers
+- **Agent ↔ service HTTP** — observe the raw communication between agents and the external services they orchestrate
+
+Because you can fully customize the response **code, headers, body, and delay**, a captured URL can also **stand in
+for an external tool or API** while you build and test an agent — simulating success, errors, or slow responses on
+demand.
+
+This fork adds capabilities that matter for AI work:
+
+- **Redis-backed request and session persistence** — captured payloads survive restarts and can be shared across
+  multiple instances behind a load balancer
+- **Storage and download of files received via `multipart/form-data`** — useful for **multimodal workflows** that
+  move documents, images, audio, and other attachments between agents and services
+- **Self-hosting** — helps keep potentially sensitive AI payloads (prompts, tool arguments, user data) inside your
+  own infrastructure
+
+> [!NOTE]
+> open-webhook is a webhook **inspection and debugging** tool — **not** an AI model server or inference platform. It
+> does not run, host, or proxy language models.
 
 Consider it a free and self-hosted alternative to [webhook.site](https://github.com/fredsted/webhook.site),
 [requestinspector.com](https://requestinspector.com/), and similar services.
@@ -18,6 +48,22 @@ Consider it a free and self-hosted alternative to [webhook.site](https://github.
 Built with Go for high performance, this application includes a lightweight UI (written in `ReactJS`) that’s compiled
 into the binary, so no additional assets are required. WebSocket support provides real-time webhook notifications in
 the UI - no need for third-party solutions like `pusher.com`!
+
+## Why this fork?
+
+This fork sharpens webhook-tester for AI and automation development:
+
+- **Debug AI-agent tool calls** — capture exactly what an agent sent when a tool call misbehaves, then iterate
+- **Simulate external tools & APIs** — custom status codes, headers, bodies, and delays let a webhook URL impersonate
+  a real service (including error and timeout cases) while you build an agent
+- **Inspect provider & model-provider webhooks** — confirm the shape and content of events delivered by third parties
+- **Trace automation triggers & callbacks** — see asynchronous callbacks from queues, cron jobs, and CI/CD pipelines
+- **Handle multimodal attachments** — persist and download files posted via `multipart/form-data` (documents, images,
+  audio) for workflows that pass binary payloads around
+- **Persist captured traffic** — Redis-backed storage keeps requests and sessions across restarts and across a
+  horizontally scaled deployment
+- **Keep sensitive payloads in-house** — self-host so prompts, tool arguments, and user data never leave your
+  infrastructure
 
 ### 🔥 Features list
 
@@ -94,43 +140,26 @@ need to do is enable this feature. It works quite simply - if the incoming reque
 automatically. All that's left for you to do is open the session in the UI
 (`http://app/s/11111111-2222-3333-4444-555555555555`).
 
-## 🧩 Installation
+## 🧩 Installation & running
 
-Download the latest binary for your architecture from the [releases page][link_releases]. For example, to install
-on an **amd64** system (e.g., Debian, Ubuntu):
+This fork is meant to be **built from source and self-hosted**. The recommended way to run it is with Docker,
+alongside a Redis server.
 
-[link_releases]:https://github.com/tarampampam/webhook-tester/releases
+### Build the image
 
 ```shell
-curl -SsL -o ./webhook-tester https://github.com/tarampampam/webhook-tester/releases/latest/download/webhook-tester-linux-amd64
-chmod +x ./webhook-tester
-./webhook-tester start
+git clone https://github.com/pavel-kruchina/open-webhook.git
+cd open-webhook
+docker build -t open-webhook .
 ```
 
-> [!TIP]
-> Each release includes binaries for **linux**, **darwin** (macOS) and **windows** (`amd64` and `arm64` architectures).
-> You can download the binary for your system from the [releases page][link_releases] (section `Assets`). And - yes,
-> all what you need is just download and run single binary file.
+The multi-stage build compiles the Go binary together with the ReactJS frontend, so you don't need a Go or Node
+toolchain on the host.
 
-Alternatively, you can use the Docker image:
+### Run it
 
-| Registry                               | Image                                |
-|----------------------------------------|--------------------------------------|
-| [GitHub Container Registry][link_ghcr] | `ghcr.io/tarampampam/webhook-tester` |
-| [Docker Hub][link_docker_hub] (mirror) | `tarampampam/webhook-tester`         |
-
-> [!NOTE]
-> It’s recommended to avoid using the `latest` tag, as **major** upgrades may include breaking changes.
-> Instead, use specific tags in `X.Y.Z` format for version consistency.
-
-To install it on Kubernetes (K8s), please use the Helm chart from [ArtifactHUB][artifact-hub].
-
-[artifact-hub]:https://artifacthub.io/packages/helm/webhook-tester/webhook-tester
-
-## ⚙ Usage
-
-The app requires a **Redis** server (for storing requests) and a writable **files directory** (for uploaded files),
-so the easiest way to run it is with the Docker image alongside Redis:
+The app requires a **Redis** server (for storing requests and sessions) and a writable **files directory** (for
+files uploaded via `multipart/form-data`):
 
 ```shell
 # start a Redis server
@@ -141,7 +170,7 @@ docker run --rm -t -p "8080:8080/tcp" \
   --link wh-redis \
   -v "$(pwd)/wh-files:/data/files" \
   -e REDIS_DSN="redis://wh-redis:6379/0" \
-  ghcr.io/tarampampam/webhook-tester:2 start --files-dir /data/files
+  open-webhook start --files-dir /data/files
 ```
 
 > [!NOTE]
@@ -149,13 +178,31 @@ docker run --rm -t -p "8080:8080/tcp" \
 > application port inside the container). `--files-dir` is required and `REDIS_DSN` must point to a reachable Redis
 > server.
 
-Next, open your browser at [`localhost:8080`](http://localhost:8080) to begin testing your webhooks. To stop the app, press `Ctrl+C` in
-the terminal where it's running.
+Next, open your browser at [`localhost:8080`](http://localhost:8080) to begin inspecting your webhooks. To stop the
+app, press `Ctrl+C` in the terminal where it's running.
 
-For custom configuration options, refer to the CLI help below or execute the app with the `--help` flag.
+For custom configuration options, refer to the CLI help below or run the app with the `--help` flag.
 
+### ⚠️ A note on pre-built artifacts (upstream vs. this fork)
+
+> [!IMPORTANT]
+> This fork does **not** currently publish its own binaries, container images, or Helm release. The upstream
+> project's pre-built artifacts install the **upstream** application, which does **not** include this fork's
+> Redis-backed persistence or `multipart/form-data` file capture:
+>
+> - **Binaries** — the upstream [releases page][link_releases] serves `webhook-tester` binaries for **linux**,
+>   **darwin** (macOS), and **windows** (`amd64`/`arm64`).
+> - **Container images** — `ghcr.io/tarampampam/webhook-tester` ([GHCR][link_ghcr]) and
+>   `tarampampam/webhook-tester` ([Docker Hub][link_docker_hub], mirror) are the **upstream** images.
+> - **Helm chart** — the [ArtifactHUB chart][artifact-hub] (and the copy under `deployments/helm` in this repo)
+>   default to the **upstream** image.
+>
+> Until fork-specific releases are published, **build from source** as shown above to get this fork's features.
+
+[link_releases]:https://github.com/tarampampam/webhook-tester/releases
 [link_ghcr]:https://github.com/users/tarampampam/packages/container/package/webhook-tester
 [link_docker_hub]:https://hub.docker.com/r/tarampampam/webhook-tester/
+[artifact-hub]:https://artifacthub.io/packages/helm/webhook-tester/webhook-tester
 
 <!--GENERATED:CLI_DOCS-->
 <!-- Documentation inside this block generated by github.com/urfave/cli-docs/v3; DO NOT EDIT -->
