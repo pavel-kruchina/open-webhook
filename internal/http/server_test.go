@@ -126,6 +126,28 @@ func TestServer_StartHTTP(t *testing.T) {
 		require.Contains(t, headers.Get("Content-Type"), "application/json")
 	})
 
+	t.Run("openapi spec (machine-readable)", func(t *testing.T) {
+		t.Parallel()
+
+		var status, body, headers = sendRequest(t, "GET", baseUrl+"/openapi.json")
+
+		require.Equal(t, http.StatusOK, status)
+		require.Contains(t, headers.Get("Content-Type"), "application/json")
+		require.Contains(t, string(body), `"openapi"`) // the OpenAPI version field
+		require.Contains(t, string(body), "/api/session")
+	})
+
+	t.Run("swagger ui docs page", func(t *testing.T) {
+		t.Parallel()
+
+		var status, body, headers = sendRequest(t, "GET", baseUrl+"/docs")
+
+		require.Equal(t, http.StatusOK, status)
+		require.Contains(t, headers.Get("Content-Type"), "text/html")
+		require.Contains(t, string(body), "swagger-ui")
+		require.Contains(t, string(body), "openapi.json")
+	})
+
 	t.Run("webhook capture", func(t *testing.T) {
 		t.Parallel()
 
