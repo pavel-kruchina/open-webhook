@@ -1,0 +1,44 @@
+# Example Caddyfile for a PUBLIC open-webhook deployment.
+#
+# Security model:
+#   - PUBLIC (no auth): webhook capture URLs and file-download capability URLs (first path segment is
+#     a 36-char UUID), plus the /healthz and /ready probes. External webhook providers must reach the
+#     capture URLs, so they cannot be behind auth.
+#   - AUTHENTICATED (Basic Auth): the management UI (/ and /s/*), the management API (/api/*, which
+#     both creates sessions and reads captured request data), and the docs (/docs, /openapi.json).
+#
+# Run the app WITHOUT --auto-create-sessions so random UUID hits cannot spawn sessions; sessions are
+# created only through the authenticated /api/session endpoint.
+#
+# Provide these environment variables to the Caddy container:
+#   OW_DOMAIN      e.g. hooks.example.com   (DNS A record must point at this server's IP)
+#   OW_ADMIN_USER  e.g. admin
+#   OW_ADMIN_HASH  bcrypt hash from:  caddy hash-password --plaintext 'YOUR_PASSWORD'
+#
+# The app container is reachable on the shared Docker network as open-webhook:8080.
+
+{$OW_DOMAIN} {
+	encode gzip
+
+	# --- Public: webhook capture + file-download capability URLs ---
+	# Match a leading UUID (8-4-4-4-12 hex) with an optional sub-path.
+	@capture path_regexp ^/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}(/.*)?$
+	handle @capture {
+		reverse_proxy open-webhook:8080
+	}
+
+	# --- Public: health / readiness probes (no secrets) ---
+	@probes path /healthz /ready
+	handle @probes {
+		reverse_proxy open-webhook:8080
+	}
+
+	# --- Everything else (UI, /api/*, /docs, /openapi.json) requires Basic Auth ---
+	# Note: the directive is `basic_auth` in Caddy 2.8+, and `basicauth` in older versions.
+	handle {
+		basic_auth {
+			{$OW_ADMIN_USER} {$OW_ADMIN_HASH}
+		}
+		reverse_proxy open-webhook:8080
+	}
+}
